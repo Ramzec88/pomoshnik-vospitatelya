@@ -1,0 +1,26 @@
+{
+  "name": "pomoshnik-vospitatelya",
+  "version": "1.0.0",
+  "description": "Telegram бот помощник воспитателя для генерации сценариев, методических материалов и игр для детей",
+  "main": "src/bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/bot.js",
+    "dev": "node --watch src/bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "воспитатель",
+    "образование",
+    "дети"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "grammy": "^1.22.1",
+    "dotenv": "^16.4.5",
+    "axios": "^1.6.7",
+    "better-sqlite3": "^9.4.3"
+  }
+}
