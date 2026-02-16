@@ -201,13 +201,22 @@ if (USE_WEBHOOK) {
   // Webhook режим для production (Railway/Render)
   const webhookUrl = `https://${WEBHOOK_DOMAIN}/webhook/${config.botToken}`;
 
-  bot.api.setWebhook(webhookUrl).then(() => {
-    console.log(`✅ Webhook установлен: ${webhookUrl}`);
-    console.log('✅ Бот успешно запущен в режиме webhook!');
-  }).catch((error) => {
-    console.error('❌ Ошибка установки webhook:', error);
-    process.exit(1);
-  });
+  // ВАЖНО: Инициализируем бота ПЕРЕД установкой webhook
+  // Это необходимо для работы bot.handleUpdate() в webhook режиме
+  (async () => {
+    try {
+      await bot.init();
+      console.log(`🤖 Бот инициализирован: @${bot.botInfo.username}`);
+
+      // Устанавливаем webhook
+      await bot.api.setWebhook(webhookUrl);
+      console.log(`✅ Webhook установлен: ${webhookUrl}`);
+      console.log('✅ Бот успешно запущен в режиме webhook!');
+    } catch (error) {
+      console.error('❌ Ошибка запуска бота:', error);
+      process.exit(1);
+    }
+  })();
 } else {
   // Polling режим для локальной разработки
   bot.start({
