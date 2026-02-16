@@ -27,9 +27,16 @@
 Краткая инструкция для Railway (рекомендуется):
 1. Создайте проект на [railway.app](https://railway.app)
 2. Подключите GitHub репозиторий
-3. Добавьте переменные окружения (BOT_TOKEN, PREMIUM_CHANNEL_ID, OPENROUTER_API_KEY)
-4. Настройте Health Check: `/health`
-5. Установите Restart Policy: Always
+3. Получите домен: Settings → Networking → Generate Domain
+4. Добавьте переменные окружения:
+   - `BOT_TOKEN` - токен от @BotFather
+   - `PREMIUM_CHANNEL_ID` - ID вашего канала
+   - `OPENROUTER_API_KEY` - ключ от OpenRouter
+   - `WEBHOOK_DOMAIN` - домен из шага 3 (БЕЗ https://)
+5. Настройте Health Check: `/health`
+6. Установите Restart Policy: Always
+
+**⚠️ Важно:** Обязательно установите `WEBHOOK_DOMAIN` чтобы бот не "засыпал"!
 
 Подробные инструкции со скриншотами и решением проблем: [DEPLOYMENT.md](DEPLOYMENT.md)
 

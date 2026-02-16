@@ -100,33 +100,93 @@ bot.catch((err) => {
 // HTTP Health Check сервер для Railway/Render и других платформ
 // Это предотвращает автоматическую остановку контейнера на бесплатных планах
 const PORT = process.env.PORT || 3000;
+const WEBHOOK_DOMAIN = process.env.WEBHOOK_DOMAIN; // например: your-app.railway.app
+const USE_WEBHOOK = !!WEBHOOK_DOMAIN;
+
 const server = createServer((req, res) => {
+  // Health check endpoint
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
       bot: 'running',
+      mode: USE_WEBHOOK ? 'webhook' : 'polling',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     }));
-  } else {
+  }
+  // Webhook endpoint для Telegram
+  else if (USE_WEBHOOK && req.url === `/webhook/${config.botToken}`) {
+    if (req.method === 'POST') {
+      let body = '';
+      req.on('data', chunk => body += chunk);
+      req.on('end', async () => {
+        try {
+          const update = JSON.parse(body);
+          await bot.handleUpdate(update);
+          res.writeHead(200);
+          res.end('OK');
+        } catch (error) {
+          console.error('Ошибка обработки webhook:', error);
+          res.writeHead(500);
+          res.end('Error');
+        }
+      });
+    } else {
+      res.writeHead(405);
+      res.end('Method Not Allowed');
+    }
+  }
+  else {
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Not Found');
   }
 });
 
 server.listen(PORT, () => {
-  console.log(`🌐 HTTP health check сервер запущен на порту ${PORT}`);
+  console.log(`🌐 HTTP сервер запущен на порту ${PORT}`);
+  console.log(`📡 Режим работы: ${USE_WEBHOOK ? 'webhook' : 'polling'}`);
 });
 
+// Keep-alive механизм: пингуем сами себя каждые 5 минут
+if (USE_WEBHOOK) {
+  setInterval(() => {
+    const url = `https://${WEBHOOK_DOMAIN}/health`;
+    fetch(url)
+      .then(() => console.log(`[${new Date().toISOString()}] Keep-alive ping успешен`))
+      .catch(err => console.error(`[${new Date().toISOString()}] Keep-alive ping failed:`, err.message));
+  }, 5 * 60 * 1000); // каждые 5 минут
+}
+
 // Graceful shutdown
-const shutdown = () => {
+const shutdown = async () => {
   console.log('\n🛑 Получен сигнал остановки, завершаю работу...');
-  bot.stop();
+
+  // Удаляем webhook если использовался
+  if (USE_WEBHOOK) {
+    try {
+      await bot.api.deleteWebhook();
+      console.log('✅ Webhook удалён');
+    } catch (error) {
+      console.error('⚠️ Ошибка удаления webhook:', error.message);
+    }
+  }
+
+  // Останавливаем бота
+  await bot.stop();
+  console.log('✅ Бот остановлен');
+
+  // Закрываем HTTP сервер
   server.close(() => {
     console.log('✅ HTTP сервер остановлен');
     process.exit(0);
   });
+
+  // Принудительный выход через 10 секунд если что-то зависло
+  setTimeout(() => {
+    console.error('⚠️ Принудительное завершение через 10 секунд');
+    process.exit(1);
+  }, 10000);
 };
 
 process.once('SIGINT', shutdown);
@@ -137,8 +197,27 @@ console.log('🤖 Запуск бота "Помощник воспитателя
 console.log(`📊 Лимит генераций: ${config.monthlyLimit} в месяц`);
 console.log(`🤖 Модель: ${config.openRouterModel}`);
 
-bot.start({
-  onStart: () => {
-    console.log('✅ Бот успешно запущен и готов к работе!');
-  },
-});
+if (USE_WEBHOOK) {
+  // Webhook режим для production (Railway/Render)
+  const webhookUrl = `https://${WEBHOOK_DOMAIN}/webhook/${config.botToken}`;
+
+  bot.api.setWebhook(webhookUrl).then(() => {
+    console.log(`✅ Webhook установлен: ${webhookUrl}`);
+    console.log('✅ Бот успешно запущен в режиме webhook!');
+  }).catch((error) => {
+    console.error('❌ Ошибка установки webhook:', error);
+    process.exit(1);
+  });
+} else {
+  // Polling режим для локальной разработки
+  bot.start({
+    onStart: () => {
+      console.log('✅ Бот успешно запущен в режиме polling!');
+    },
+    // Настройки для более надёжного polling
+    allowed_updates: ['message', 'callback_query'],
+  }).catch((error) => {
+    console.error('❌ Ошибка запуска бота:', error);
+    process.exit(1);
+  });
+}
