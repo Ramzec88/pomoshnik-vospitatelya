@@ -1,4 +1,4 @@
-import { InlineKeyboard } from 'grammy';
+import { InlineKeyboard, Keyboard } from 'grammy';
 import {
   getOrCreateUser,
   saveUserState,
@@ -9,6 +9,20 @@ import {
 } from '../database/db.js';
 import { generateContent, CONTENT_TYPES } from '../services/openrouter.js';
 import { config } from '../config.js';
+
+// Создание главного меню с кнопками
+function createMainMenuKeyboard() {
+  return new Keyboard()
+    .text('📋 Сценарий')
+    .text('💡 Методическая подсказка')
+    .row()
+    .text('🎨 Занятие')
+    .text('🎮 Игра')
+    .row()
+    .text('📊 Мои лимиты')
+    .text('ℹ️ Помощь')
+    .resized();
+}
 
 // Вопросы для сбора информации
 const QUESTIONS = {
@@ -57,7 +71,8 @@ export async function handleContentTypeSelection(ctx, contentType) {
     await ctx.reply(
       '❌ Вы исчерпали лимит генераций на этот месяц.\n\n' +
       'Лимит обновится в начале следующего месяца.\n' +
-      'Используйте /limits для просмотра статистики.'
+      'Нажмите "📊 Мои лимиты" для просмотра статистики.',
+      { reply_markup: createMainMenuKeyboard() }
     );
     return;
   }
@@ -218,16 +233,18 @@ export async function handleDescription(ctx) {
     if (remaining > 0) {
       await ctx.reply(
         'Хотите создать что-то еще? Выберите тип контента из меню.',
-        { reply_markup: { remove_keyboard: true } }
+        { reply_markup: createMainMenuKeyboard() }
       );
     }
   } catch (error) {
     console.error('Ошибка генерации:', error);
     clearUserState(userId);
+
     await ctx.reply(
       '❌ Произошла ошибка при генерации контента.\n' +
       'Попробуйте еще раз позже или обратитесь к администратору.\n\n' +
-      'Генерация не была учтена в вашем лимите.'
+      'Генерация не была учтена в вашем лимите.',
+      { reply_markup: createMainMenuKeyboard() }
     );
   }
 }
@@ -240,9 +257,14 @@ export async function handleCancel(ctx) {
     clearUserState(userId);
     await ctx.reply(
       '❌ Операция отменена.\n\n' +
-      'Используйте /start для возврата в главное меню.'
+      'Выберите тип контента из меню:',
+      { reply_markup: createMainMenuKeyboard() }
     );
   } else {
-    await ctx.reply('Нет активных операций для отмены.');
+    await ctx.reply(
+      'Нет активных операций для отмены.\n\n' +
+      'Выберите тип контента из меню:',
+      { reply_markup: createMainMenuKeyboard() }
+    );
   }
 }
