@@ -33,6 +33,9 @@ export async function handleStart(ctx) {
     `🎨 Развивающие занятия\n` +
     `🎮 Детские игры\n\n` +
     `📊 У вас осталось ${remaining} из ${config.monthlyLimit} генераций в этом месяце.\n\n` +
+    `💡 Как получить лучший результат?\n` +
+    `Прочитайте статью с подсказками:\n` +
+    `https://telegra.ph/Kak-poluchit-ot-Mishki-Maksa-imenno-to-chto-nuzhno-02-16\n\n` +
     `Выберите тип контента из меню ниже:`,
     { reply_markup: keyboard }
   );

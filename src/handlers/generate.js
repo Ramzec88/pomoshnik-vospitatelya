@@ -9,6 +9,7 @@ import {
 } from '../database/db.js';
 import { generateContent, CONTENT_TYPES } from '../services/openrouter.js';
 import { config } from '../config.js';
+import { sendLongMessage } from '../utils/telegram.js';
 
 // Создание главного меню с кнопками
 function createMainMenuKeyboard() {
@@ -224,7 +225,9 @@ export async function handleDescription(ctx) {
     const typeInfo = CONTENT_TYPES[contentType];
     const remaining = getRemainingGenerations(userId, config.monthlyLimit);
 
-    await ctx.reply(
+    // Используем sendLongMessage для автоматической разбивки длинных ответов
+    await sendLongMessage(
+      ctx,
       `${typeInfo.emoji} ${typeInfo.name}\n\n${result}\n\n` +
       `---\n📊 Осталось генераций: ${remaining}`
     );
