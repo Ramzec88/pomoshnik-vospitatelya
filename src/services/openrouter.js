@@ -69,7 +69,7 @@ export async function generateContent(contentType, userPrompt, userContext = {})
           'Authorization': `Bearer ${config.openRouterApiKey}`,
           'Content-Type': 'application/json',
           'HTTP-Referer': 'https://github.com/pomoshnik-vospitatelya',
-          'X-Title': 'Помощник воспитателя',
+          'X-Title': 'Pomoshnik Vospitatelya Bot',
         },
       }
     );
