@@ -1,4 +1,5 @@
 import { Bot, session } from 'grammy';
+import { createServer } from 'http';
 import { config, validateConfig } from './config.js';
 import { initDatabase } from './database/db.js';
 import { checkSubscription } from './middleware/checkSubscription.js';
@@ -70,37 +71,66 @@ bot.callbackQuery(/^skip:/, checkSubscription, handleSkip);
 bot.on('message:text', checkSubscription, handleDescription);
 
 // Обработка ошибок
+// ВАЖНО: не бросаем ошибки дальше, чтобы не останавливать polling
 bot.catch((err) => {
   const ctx = err.ctx;
-  console.error(`Ошибка при обработке обновления ${ctx.update.update_id}:`);
+  console.error(`[${new Date().toISOString()}] Ошибка при обработке обновления ${ctx.update.update_id}:`);
   const e = err.error;
 
   if (e instanceof Error) {
     console.error('Ошибка:', e.message);
-    console.error(e.stack);
+    console.error('Stack:', e.stack);
   } else {
     console.error('Неизвестная ошибка:', e);
   }
 
-  // Уведомляем пользователя
-  if (ctx.chat) {
+  // Уведомляем пользователя (без выброса ошибки)
+  if (ctx?.chat) {
     ctx.reply(
       '❌ Произошла ошибка при обработке вашего запроса.\n' +
       'Попробуйте еще раз или обратитесь к администратору.'
-    ).catch(console.error);
+    ).catch((replyError) => {
+      console.error('Не удалось отправить сообщение об ошибке:', replyError.message);
+    });
+  }
+
+  // НЕ бросаем ошибку дальше - бот продолжает работать
+});
+
+// HTTP Health Check сервер для Railway/Render и других платформ
+// Это предотвращает автоматическую остановку контейнера на бесплатных планах
+const PORT = process.env.PORT || 3000;
+const server = createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      bot: 'running',
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    }));
+  } else {
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not Found');
   }
 });
 
-// Graceful shutdown
-process.once('SIGINT', () => {
-  console.log('\n🛑 Получен SIGINT, останавливаю бота...');
-  bot.stop();
+server.listen(PORT, () => {
+  console.log(`🌐 HTTP health check сервер запущен на порту ${PORT}`);
 });
 
-process.once('SIGTERM', () => {
-  console.log('\n🛑 Получен SIGTERM, останавливаю бота...');
+// Graceful shutdown
+const shutdown = () => {
+  console.log('\n🛑 Получен сигнал остановки, завершаю работу...');
   bot.stop();
-});
+  server.close(() => {
+    console.log('✅ HTTP сервер остановлен');
+    process.exit(0);
+  });
+};
+
+process.once('SIGINT', shutdown);
+process.once('SIGTERM', shutdown);
 
 // Запуск бота
 console.log('🤖 Запуск бота "Помощник воспитателя"...');
