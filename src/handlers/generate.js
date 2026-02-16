@@ -1,5 +1,6 @@
 import { InlineKeyboard } from 'grammy';
 import {
+  getOrCreateUser,
   saveUserState,
   getUserState,
   clearUserState,
@@ -42,6 +43,13 @@ const QUESTIONS = {
 
 export async function handleContentTypeSelection(ctx, contentType) {
   const userId = ctx.from.id;
+
+  // Создаем или получаем пользователя
+  getOrCreateUser(userId, {
+    username: ctx.from.username,
+    first_name: ctx.from.first_name,
+    last_name: ctx.from.last_name,
+  });
 
   // Проверяем лимит
   const remaining = getRemainingGenerations(userId, config.monthlyLimit);
