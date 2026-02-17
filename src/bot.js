@@ -1,7 +1,7 @@
 import { Bot, session } from 'grammy';
 import { createServer } from 'http';
 import { config, validateConfig } from './config.js';
-import { initDatabase } from './database/db.js';
+import { initDatabase, closeDatabase } from './database/db-postgres.js';
 import { checkSubscription } from './middleware/checkSubscription.js';
 import { handleStart } from './handlers/start.js';
 import { handleLimits } from './handlers/limits.js';
@@ -26,7 +26,7 @@ try {
 }
 
 // Инициализация базы данных
-initDatabase();
+await initDatabase();
 
 // Создание бота
 const bot = new Bot(config.botToken);
@@ -175,6 +175,13 @@ const shutdown = async () => {
   // Останавливаем бота
   await bot.stop();
   console.log('✅ Бот остановлен');
+
+  // Закрываем соединение с базой данных
+  try {
+    await closeDatabase();
+  } catch (error) {
+    console.error('⚠️ Ошибка закрытия БД:', error.message);
+  }
 
   // Закрываем HTTP сервер
   server.close(() => {

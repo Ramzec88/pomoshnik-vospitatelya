@@ -1,18 +1,18 @@
 import { Keyboard } from 'grammy';
-import { getOrCreateUser, getRemainingGenerations } from '../database/db.js';
+import { getOrCreateUser, getRemainingGenerations } from '../database/db-postgres.js';
 import { config } from '../config.js';
 
 export async function handleStart(ctx) {
   const userId = ctx.from.id;
 
   // Создаем или получаем пользователя
-  getOrCreateUser(userId, {
+  await getOrCreateUser(userId, {
     username: ctx.from.username,
     first_name: ctx.from.first_name,
     last_name: ctx.from.last_name,
   });
 
-  const remaining = getRemainingGenerations(userId, config.monthlyLimit);
+  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
 
   const keyboard = new Keyboard()
     .text('📋 Сценарий')

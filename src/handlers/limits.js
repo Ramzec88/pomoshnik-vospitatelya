@@ -1,10 +1,10 @@
-import { getRemainingGenerations, getMonthlyGenerationsCount } from '../database/db.js';
+import { getRemainingGenerations, getMonthlyGenerationsCount } from '../database/db-postgres.js';
 import { config } from '../config.js';
 
 export async function handleLimits(ctx) {
   const userId = ctx.from.id;
-  const used = getMonthlyGenerationsCount(userId);
-  const remaining = getRemainingGenerations(userId, config.monthlyLimit);
+  const used = await getMonthlyGenerationsCount(userId);
+  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
 
   const progressBar = createProgressBar(used, config.monthlyLimit);
 

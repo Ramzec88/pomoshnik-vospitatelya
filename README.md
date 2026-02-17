@@ -15,7 +15,7 @@
 - ✅ Система лимитов (10 генераций в месяц на пользователя)
 - ✅ Интерактивный сбор информации о параметрах (возраст, группа, тема)
 - ✅ 4 типа контента: сценарии, методические материалы, занятия, игры
-- ✅ SQLite база данных для хранения пользователей и истории генераций
+- ✅ PostgreSQL база данных для надежного хранения данных
 - ✅ Удобное меню и интуитивный интерфейс
 - ✅ HTTP health check для деплоя на Railway/Render
 - ✅ Устойчивая обработка ошибок (не падает при проблемах)
@@ -25,18 +25,33 @@
 **Для деплоя на Railway, Render или VPS см. [DEPLOYMENT.md](DEPLOYMENT.md)**
 
 Краткая инструкция для Railway (рекомендуется):
-1. Создайте проект на [railway.app](https://railway.app)
-2. Подключите GitHub репозиторий
-3. Получите домен: Settings → Networking → Generate Domain
-4. Добавьте переменные окружения:
+
+### 1. Добавьте PostgreSQL базу данных
+   - В вашем проекте нажмите "+ New" → "Database" → "Add PostgreSQL"
+   - Railway автоматически создаст переменную `DATABASE_URL`
+   - ✅ **Важно:** База данных сохранит данные даже после перезапуска!
+
+### 2. Настройте бота
+   - Создайте проект на [railway.app](https://railway.app)
+   - Подключите GitHub репозиторий
+   - Получите домен: Settings → Networking → Generate Domain
+
+### 3. Добавьте переменные окружения:
    - `BOT_TOKEN` - токен от @BotFather
    - `PREMIUM_CHANNEL_ID` - ID вашего канала
    - `OPENROUTER_API_KEY` - ключ от OpenRouter
-   - `WEBHOOK_DOMAIN` - домен из шага 3 (БЕЗ https://)
-5. Настройте Health Check: `/health`
-6. Установите Restart Policy: Always
+   - `WEBHOOK_DOMAIN` - домен из шага 2 (БЕЗ https://)
+   - `DATABASE_URL` - **автоматически создается** при добавлении PostgreSQL
 
-**⚠️ Важно:** Обязательно установите `WEBHOOK_DOMAIN` чтобы бот не "засыпал"!
+### 4. Финальная настройка
+   - Настройте Health Check: `/health`
+   - Установите Restart Policy: Always
+   - Дождитесь деплоя
+
+**⚠️ Важно:**
+- Обязательно добавьте PostgreSQL ПЕРЕД первым запуском!
+- Установите `WEBHOOK_DOMAIN` чтобы бот не "засыпал"!
+- После каждого деплоя данные (лимиты) НЕ обнуляются! ✅
 
 Подробные инструкции со скриншотами и решением проблем: [DEPLOYMENT.md](DEPLOYMENT.md)
 
@@ -45,6 +60,7 @@
 ### Требования
 
 - Node.js 18+ (рекомендуется 20+)
+- PostgreSQL 12+ (для локальной разработки)
 - npm или yarn
 - Telegram Bot Token
 - OpenRouter API Key
@@ -63,7 +79,50 @@ cd pomoshnik-vospitatelya
 npm install
 ```
 
-### Шаг 3: Настройка переменных окружения
+### Шаг 3: Настройка PostgreSQL (локально)
+
+**Вариант 1: Установка PostgreSQL локально**
+```bash
+# macOS (Homebrew)
+brew install postgresql@14
+brew services start postgresql@14
+
+# Ubuntu/Debian
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+sudo systemctl start postgresql
+
+# Windows
+# Скачайте установщик с https://www.postgresql.org/download/windows/
+```
+
+Создайте базу данных:
+```bash
+# Подключитесь к PostgreSQL
+psql postgres
+
+# Создайте базу данных
+CREATE DATABASE pomoshnik;
+
+# Выйдите
+\q
+```
+
+**Вариант 2: Docker (проще)**
+```bash
+docker run --name pomoshnik-postgres \
+  -e POSTGRES_DB=pomoshnik \
+  -e POSTGRES_USER=postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -p 5432:5432 \
+  -d postgres:14
+```
+
+**Вариант 3: Облачная БД (Supabase, Railway)**
+- Создайте бесплатную PostgreSQL на [supabase.com](https://supabase.com) или [railway.app](https://railway.app)
+- Получите `DATABASE_URL` и используйте его в `.env`
+
+### Шаг 4: Настройка переменных окружения
 
 1. Скопируйте файл `.env.example` в `.env`:
 ```bash
@@ -92,9 +151,14 @@ OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
 
 # Лимит генераций (по умолчанию 10)
 MONTHLY_LIMIT=10
+
+# PostgreSQL Database URL
+# Для локальной разработки:
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/pomoshnik
+# Для Railway/Render: устанавливается автоматически
 ```
 
-### Шаг 4: Настройка Telegram бота
+### Шаг 5: Настройка Telegram бота
 
 1. **Создайте бота через @BotFather:**
    - Отправьте `/newbot`
@@ -114,7 +178,7 @@ MONTHLY_LIMIT=10
    - Скопируйте Chat ID (например: -1001234567890)
    - Удалите @userinfobot из канала
 
-### Шаг 5: Получите OpenRouter API ключ
+### Шаг 6: Получите OpenRouter API ключ
 
 1. Зарегистрируйтесь на https://openrouter.ai
 2. Перейдите в раздел Keys: https://openrouter.ai/keys
@@ -196,7 +260,7 @@ pomoshnik-vospitatelya/
 │   ├── bot.js                 # Основной файл бота
 │   ├── config.js              # Конфигурация
 │   ├── database/
-│   │   └── db.js              # Работа с базой данных
+│   │   └── db-postgres.js     # PostgreSQL база данных
 │   ├── handlers/
 │   │   ├── start.js           # Обработчик /start
 │   │   ├── limits.js          # Обработчик лимитов
@@ -266,18 +330,22 @@ OPENROUTER_MODEL=openai/gpt-3.5-turbo
 2. Убедитесь, что API ключ активен
 3. Проверьте доступность выбранной модели
 
-### База данных заблокирована
+### Ошибка подключения к базе данных
 
-Если возникает ошибка "database is locked":
+Если возникает ошибка PostgreSQL:
 ```bash
-# Остановите бота
-pm2 stop pomoshnik-vospitatelya
+# Проверьте что PostgreSQL запущен
+# macOS:
+brew services list
 
-# Удалите файл блокировки (если есть)
-rm users.db-wal users.db-shm
+# Linux:
+sudo systemctl status postgresql
 
-# Запустите снова
-pm2 start pomoshnik-vospitatelya
+# Проверьте DATABASE_URL в .env
+echo $DATABASE_URL
+
+# Для Docker:
+docker ps | grep postgres
 ```
 
 ## 💰 Стоимость использования
@@ -299,14 +367,17 @@ OpenRouter взимает плату за использование API в за
 
 ### Просмотр статистики использования
 
-База данных SQLite (`users.db`) содержит:
+База данных PostgreSQL содержит:
 - Список пользователей
 - История всех генераций
 - Текущие состояния пользователей
 
-Для просмотра данных используйте SQLite клиент:
+Для просмотра данных используйте `psql` или любой PostgreSQL клиент:
+
+**Локально:**
 ```bash
-sqlite3 users.db
+# Подключение к базе
+psql postgresql://postgres:postgres@localhost:5432/pomoshnik
 
 # Посмотреть всех пользователей
 SELECT * FROM users;
@@ -318,7 +389,14 @@ GROUP BY user_id;
 
 # Генерации за текущий месяц
 SELECT * FROM generations
-WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now');
+WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP);
+```
+
+**Railway:**
+```bash
+# Получите DATABASE_URL из Variables и подключитесь
+railway connect postgres
+# или используйте веб-интерфейс Railway для просмотра данных
 ```
 
 ## 🔐 Безопасность
@@ -326,8 +404,8 @@ WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now');
 - ✅ Никогда не коммитьте файл `.env` в git
 - ✅ Храните API ключи в безопасности
 - ✅ Регулярно проверяйте баланс OpenRouter
-- ✅ Ограничьте доступ к серверу
-- ✅ Делайте резервные копии базы данных
+- ✅ Ограничьте доступ к PostgreSQL (используйте пароли)
+- ✅ Делайте резервные копии базы данных (Railway делает автоматически)
 
 ## 📝 Лицензия
 

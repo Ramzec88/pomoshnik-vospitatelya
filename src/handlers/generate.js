@@ -6,7 +6,7 @@ import {
   clearUserState,
   getRemainingGenerations,
   addGeneration,
-} from '../database/db.js';
+} from '../database/db-postgres.js';
 import { generateContent, CONTENT_TYPES } from '../services/openrouter.js';
 import { config } from '../config.js';
 import { sendLongMessage } from '../utils/telegram.js';
@@ -60,14 +60,14 @@ export async function handleContentTypeSelection(ctx, contentType) {
   const userId = ctx.from.id;
 
   // Создаем или получаем пользователя
-  getOrCreateUser(userId, {
+  await getOrCreateUser(userId, {
     username: ctx.from.username,
     first_name: ctx.from.first_name,
     last_name: ctx.from.last_name,
   });
 
   // Проверяем лимит
-  const remaining = getRemainingGenerations(userId, config.monthlyLimit);
+  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
   if (remaining <= 0) {
     await ctx.reply(
       '❌ Вы исчерпали лимит генераций на этот месяц.\n\n' +
@@ -79,7 +79,7 @@ export async function handleContentTypeSelection(ctx, contentType) {
   }
 
   // Сохраняем начальное состояние
-  saveUserState(userId, 'collecting_info', {
+  await saveUserState(userId, 'collecting_info', {
     contentType,
     step: 'ageGroup',
     data: {},
@@ -111,7 +111,7 @@ export async function handleAnswer(ctx) {
   const [action, questionKey, ...valueParts] = data.split(':');
   const value = valueParts.join(':');
 
-  const state = getUserState(userId);
+  const state = await getUserState(userId);
   if (!state || state.state !== 'collecting_info') {
     await ctx.answerCallbackQuery('Сессия истекла. Начните заново.');
     return;
@@ -128,7 +128,7 @@ export async function handleAnswer(ctx) {
   if (nextStep === 'final') {
     // Все вопросы заданы, запрашиваем описание
     state.data.step = 'awaiting_description';
-    saveUserState(userId, state.state, state.data);
+    await saveUserState(userId, state.state, state.data);
 
     await ctx.editMessageText('✅ Параметры сохранены!');
     await ctx.reply(
@@ -142,7 +142,7 @@ export async function handleAnswer(ctx) {
   } else {
     // Задаем следующий вопрос
     state.data.step = nextStep;
-    saveUserState(userId, state.state, state.data);
+    await saveUserState(userId, state.state, state.data);
 
     await ctx.editMessageText(`✅ Сохранено: ${value}`);
     await askQuestion(ctx, nextStep);
@@ -156,7 +156,7 @@ export async function handleSkip(ctx) {
   const data = ctx.callbackQuery.data;
   const questionKey = data.split(':')[1];
 
-  const state = getUserState(userId);
+  const state = await getUserState(userId);
   if (!state || state.state !== 'collecting_info') {
     await ctx.answerCallbackQuery('Сессия истекла. Начните заново.');
     return;
@@ -169,7 +169,7 @@ export async function handleSkip(ctx) {
 
   if (nextStep === 'final') {
     state.data.step = 'awaiting_description';
-    saveUserState(userId, state.state, state.data);
+    await saveUserState(userId, state.state, state.data);
 
     await ctx.editMessageText('⏭️ Пропущено');
     await ctx.reply(
@@ -178,7 +178,7 @@ export async function handleSkip(ctx) {
     );
   } else {
     state.data.step = nextStep;
-    saveUserState(userId, state.state, state.data);
+    await saveUserState(userId, state.state, state.data);
 
     await ctx.editMessageText('⏭️ Пропущено');
     await askQuestion(ctx, nextStep);
@@ -189,7 +189,7 @@ export async function handleSkip(ctx) {
 
 export async function handleDescription(ctx) {
   const userId = ctx.from.id;
-  const state = getUserState(userId);
+  const state = await getUserState(userId);
 
   if (!state || state.state !== 'collecting_info' || state.data.step !== 'awaiting_description') {
     return; // Не наше сообщение
@@ -216,14 +216,14 @@ export async function handleDescription(ctx) {
     const result = await generateContent(contentType, description, context);
 
     // Сохраняем генерацию
-    addGeneration(userId, contentType);
+    await addGeneration(userId, contentType);
 
     // Очищаем состояние
-    clearUserState(userId);
+    await clearUserState(userId);
 
     // Отправляем результат
     const typeInfo = CONTENT_TYPES[contentType];
-    const remaining = getRemainingGenerations(userId, config.monthlyLimit);
+    const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
 
     // Используем sendLongMessage для автоматической разбивки длинных ответов
     await sendLongMessage(
@@ -241,7 +241,7 @@ export async function handleDescription(ctx) {
     }
   } catch (error) {
     console.error('Ошибка генерации:', error);
-    clearUserState(userId);
+    await clearUserState(userId);
 
     await ctx.reply(
       '❌ Произошла ошибка при генерации контента.\n' +
@@ -254,10 +254,10 @@ export async function handleDescription(ctx) {
 
 export async function handleCancel(ctx) {
   const userId = ctx.from.id;
-  const state = getUserState(userId);
+  const state = await getUserState(userId);
 
   if (state) {
-    clearUserState(userId);
+    await clearUserState(userId);
     await ctx.reply(
       '❌ Операция отменена.\n\n' +
       'Выберите тип контента из меню:',
