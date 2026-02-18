@@ -42,19 +42,16 @@ export async function handleAnalytics(ctx) {
     }).join('\n');
 
     const text =
-      `📊 *Аналитика бота*\n\n` +
-      `👥 Всего пользователей: *${stats.totalUsers}*\n` +
-      `📝 Всего генераций: *${stats.totalGenerations}*\n` +
-      `📅 За этот месяц: *${stats.monthlyGenerations}*\n\n` +
+      `📊 Аналитика бота\n\n` +
+      `👥 Всего пользователей: ${stats.totalUsers}\n` +
+      `📝 Всего генераций: ${stats.totalGenerations}\n` +
+      `📅 За этот месяц: ${stats.monthlyGenerations}\n\n` +
       `📋 По типам контента:\n${byTypeLines || '  —'}`;
 
     const keyboard = new InlineKeyboard()
       .text('📋 Последние 20 запросов', 'admin:requests:0');
 
-    await ctx.reply(text, {
-      parse_mode: 'Markdown',
-      reply_markup: keyboard,
-    });
+    await ctx.reply(text, { reply_markup: keyboard });
   } catch (error) {
     console.error('Ошибка аналитики:', error);
     await ctx.reply('❌ Ошибка получения статистики.');
@@ -87,8 +84,10 @@ export async function handleAdminCallback(ctx) {
         const info = CONTENT_TYPES[row.content_type];
         const typeLabel = `${info?.emoji || '•'} ${info?.name || row.content_type}`;
         const userLabel = getUserLabel(row);
-        const text = row.user_text ? `"${row.user_text}"` : '_текст не сохранён_';
-        return `*${offset + i + 1}.* ${formatDate(row.created_at)}\n👤 ${userLabel}\n${typeLabel}\n${text}`;
+        const userText = row.user_text
+          ? `« ${row.user_text} »`
+          : '(текст не сохранён)';
+        return `${offset + i + 1}. ${formatDate(row.created_at)}\n👤 ${userLabel}\n${typeLabel}\n${userText}`;
       });
 
       const keyboard = new InlineKeyboard();
@@ -102,13 +101,13 @@ export async function handleAdminCallback(ctx) {
       await ctx.answerCallbackQuery();
       await sendLongMessage(
         ctx,
-        `📋 *Последние запросы* (${offset + 1}–${offset + items.length}):\n\n` +
-        lines.join('\n\n---\n\n'),
-        { parse_mode: 'Markdown', reply_markup: keyboard.inline_keyboard.length ? keyboard : undefined }
+        `📋 Последние запросы (${offset + 1}–${offset + items.length}):\n\n` +
+        lines.join('\n\n———\n\n'),
+        keyboard.inline_keyboard.length ? { reply_markup: keyboard } : {}
       );
     } catch (error) {
       console.error('Ошибка получения запросов:', error);
-      await ctx.answerCallbackQuery('Ошибка');
+      await ctx.answerCallbackQuery('Ошибка загрузки').catch(() => {});
     }
   }
 }
