@@ -215,8 +215,8 @@ export async function handleDescription(ctx) {
 
     const result = await generateContent(contentType, description, context);
 
-    // Сохраняем генерацию
-    await addGeneration(userId, contentType);
+    // Сохраняем генерацию (с текстом запроса пользователя)
+    await addGeneration(userId, contentType, description);
 
     // Очищаем состояние
     await clearUserState(userId);

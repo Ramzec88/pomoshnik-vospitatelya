@@ -13,6 +13,7 @@ import {
   handleDescription,
   handleCancel,
 } from './handlers/generate.js';
+import { handleAnalytics, handleAdminCallback } from './handlers/admin.js';
 import { CONTENT_TYPES } from './services/openrouter.js';
 
 // Валидация конфигурации
@@ -44,6 +45,7 @@ bot.command('start', checkSubscription, handleStart);
 bot.command('limits', checkSubscription, handleLimits);
 bot.command('help', checkSubscription, handleHelp);
 bot.command('cancel', checkSubscription, handleCancel);
+bot.command('analytics', handleAnalytics);
 
 // Обработка кнопок меню
 bot.hears('📊 Мои лимиты', checkSubscription, handleLimits);
@@ -66,6 +68,8 @@ bot.hears('🎮 Игра', checkSubscription, (ctx) =>
 // Обработка callback-запросов (ответы на вопросы)
 bot.callbackQuery(/^answer:/, checkSubscription, handleAnswer);
 bot.callbackQuery(/^skip:/, checkSubscription, handleSkip);
+// Callback-запросы администратора
+bot.callbackQuery(/^admin:/, handleAdminCallback);
 
 // Обработка текстовых сообщений (описание запроса)
 bot.on('message:text', checkSubscription, handleDescription);

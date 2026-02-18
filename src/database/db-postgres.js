@@ -33,6 +33,8 @@ export async function initDatabase() {
         FOREIGN KEY (user_id) REFERENCES users(user_id)
       );
 
+      ALTER TABLE generations ADD COLUMN IF NOT EXISTS user_text TEXT;
+
       CREATE TABLE IF NOT EXISTS user_states (
         user_id BIGINT PRIMARY KEY,
         state TEXT,
@@ -105,14 +107,63 @@ export async function getMonthlyGenerationsCount(userId) {
 }
 
 // Добавление записи о генерации
-export async function addGeneration(userId, contentType) {
+export async function addGeneration(userId, contentType, userText = null) {
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO generations (user_id, content_type)
-       VALUES ($1, $2)`,
-      [userId, contentType]
+      `INSERT INTO generations (user_id, content_type, user_text)
+       VALUES ($1, $2, $3)`,
+      [userId, contentType, userText]
     );
+  } finally {
+    client.release();
+  }
+}
+
+// Статистика для администратора
+export async function getAnalytics() {
+  const client = await pool.connect();
+  try {
+    const [users, total, monthly, byType] = await Promise.all([
+      client.query('SELECT COUNT(*) as count FROM users'),
+      client.query('SELECT COUNT(*) as count FROM generations'),
+      client.query(
+        `SELECT COUNT(*) as count FROM generations
+         WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)`
+      ),
+      client.query(
+        `SELECT content_type, COUNT(*) as count
+         FROM generations
+         GROUP BY content_type
+         ORDER BY count DESC`
+      ),
+    ]);
+
+    return {
+      totalUsers: parseInt(users.rows[0].count),
+      totalGenerations: parseInt(total.rows[0].count),
+      monthlyGenerations: parseInt(monthly.rows[0].count),
+      byType: byType.rows,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+// Последние запросы пользователей (с текстом), с поддержкой пагинации
+export async function getRecentRequests(limit = 20, offset = 0) {
+  const client = await pool.connect();
+  try {
+    const result = await client.query(
+      `SELECT g.id, g.user_id, u.username, u.first_name, u.last_name,
+              g.content_type, g.user_text, g.created_at
+       FROM generations g
+       JOIN users u ON g.user_id = u.user_id
+       ORDER BY g.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    return result.rows;
   } finally {
     client.release();
   }
