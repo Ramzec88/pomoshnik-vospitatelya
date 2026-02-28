@@ -2,11 +2,10 @@ import { InlineKeyboard } from 'grammy';
 import { getAnalytics, getRecentRequests } from '../database/db-postgres.js';
 import { CONTENT_TYPES } from '../services/openrouter.js';
 import { sendLongMessage } from '../utils/telegram.js';
-
-const ADMIN_ID = 369960686;
+import { ADMIN_IDS } from '../config.js';
 
 function isAdmin(ctx) {
-  return ctx.from?.id === ADMIN_ID;
+  return ADMIN_IDS.includes(ctx.from?.id);
 }
 
 function formatDate(date) {

@@ -8,14 +8,14 @@ import {
   addGeneration,
 } from '../database/db-postgres.js';
 import { generateContent, CONTENT_TYPES } from '../services/openrouter.js';
-import { config } from '../config.js';
+import { config, ADMIN_IDS } from '../config.js';
 import { sendLongMessage } from '../utils/telegram.js';
 
 // Создание главного меню с кнопками
 function createMainMenuKeyboard() {
   return new Keyboard()
     .text('📋 Сценарий')
-    .text('💡 Методическая подсказка')
+    .text('🎵 Песня и ноты')
     .row()
     .text('🎨 Занятие')
     .text('🎮 Игра')
@@ -66,16 +66,19 @@ export async function handleContentTypeSelection(ctx, contentType) {
     last_name: ctx.from.last_name,
   });
 
-  // Проверяем лимит
-  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
-  if (remaining <= 0) {
-    await ctx.reply(
-      '❌ Вы исчерпали лимит генераций на этот месяц.\n\n' +
-      'Лимит обновится в начале следующего месяца.\n' +
-      'Нажмите "📊 Мои лимиты" для просмотра статистики.',
-      { reply_markup: createMainMenuKeyboard() }
-    );
-    return;
+  // Проверяем лимит (администраторы имеют безлимитный доступ)
+  const isAdmin = ADMIN_IDS.includes(userId);
+  if (!isAdmin) {
+    const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
+    if (remaining <= 0) {
+      await ctx.reply(
+        '❌ Вы исчерпали лимит генераций на этот месяц.\n\n' +
+        'Лимит обновится в начале следующего месяца.\n' +
+        'Нажмите "📊 Мои лимиты" для просмотра статистики.',
+        { reply_markup: createMainMenuKeyboard() }
+      );
+      return;
+    }
   }
 
   // Сохраняем начальное состояние
@@ -223,7 +226,8 @@ export async function handleDescription(ctx) {
 
     // Отправляем результат
     const typeInfo = CONTENT_TYPES[contentType];
-    const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
+    const isAdmin = ADMIN_IDS.includes(userId);
+    const remaining = isAdmin ? '∞' : await getRemainingGenerations(userId, config.monthlyLimit);
 
     // Используем sendLongMessage для автоматической разбивки длинных ответов
     await sendLongMessage(
@@ -233,7 +237,7 @@ export async function handleDescription(ctx) {
     );
 
     // Предлагаем создать еще
-    if (remaining > 0) {
+    if (isAdmin || remaining > 0) {
       await ctx.reply(
         'Хотите создать что-то еще? Выберите тип контента из меню.',
         { reply_markup: createMainMenuKeyboard() }

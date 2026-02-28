@@ -2,6 +2,9 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// ID администраторов с безлимитными запросами
+export const ADMIN_IDS = [369960686, 811069094];
+
 export const config = {
   botToken: process.env.BOT_TOKEN,
   premiumChannelId: process.env.PREMIUM_CHANNEL_ID,

@@ -55,7 +55,7 @@ bot.hears('ℹ️ Помощь', checkSubscription, handleHelp);
 bot.hears('📋 Сценарий', checkSubscription, (ctx) =>
   handleContentTypeSelection(ctx, 'scenario')
 );
-bot.hears('💡 Методическая подсказка', checkSubscription, (ctx) =>
+bot.hears('🎵 Песня и ноты', checkSubscription, (ctx) =>
   handleContentTypeSelection(ctx, 'methodical')
 );
 bot.hears('🎨 Занятие', checkSubscription, (ctx) =>
