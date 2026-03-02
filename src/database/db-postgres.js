@@ -150,6 +150,44 @@ export async function getAnalytics() {
   }
 }
 
+// Статистика использования лимитов (без админов) за текущий месяц
+export async function getMonthlyUsageStats(adminIds, monthlyLimit) {
+  const client = await pool.connect();
+  try {
+    // Считаем количество обычных пользователей (не админов)
+    const usersResult = await client.query(
+      `SELECT COUNT(*) as count FROM users WHERE user_id NOT IN (${adminIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      adminIds
+    );
+    const regularUsersCount = parseInt(usersResult.rows[0].count);
+
+    // Считаем использованные запросы за текущий месяц (без админов)
+    const usedResult = await client.query(
+      `SELECT COUNT(*) as count FROM generations
+       WHERE DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+       AND user_id NOT IN (${adminIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      adminIds
+    );
+    const usedRequests = parseInt(usedResult.rows[0].count);
+
+    // Максимально возможное количество запросов
+    const maxRequests = regularUsersCount * monthlyLimit;
+
+    // Процент использования
+    const usagePercent = maxRequests > 0 ? Math.round((usedRequests / maxRequests) * 100) : 0;
+
+    return {
+      regularUsersCount,
+      usedRequests,
+      maxRequests,
+      remainingRequests: Math.max(0, maxRequests - usedRequests),
+      usagePercent,
+    };
+  } finally {
+    client.release();
+  }
+}
+
 // Последние запросы пользователей (с текстом), с поддержкой пагинации
 export async function getRecentRequests(limit = 20, offset = 0) {
   const client = await pool.connect();

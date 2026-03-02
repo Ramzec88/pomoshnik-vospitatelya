@@ -1,8 +1,8 @@
 import { InlineKeyboard } from 'grammy';
-import { getAnalytics, getRecentRequests } from '../database/db-postgres.js';
+import { getAnalytics, getRecentRequests, getMonthlyUsageStats } from '../database/db-postgres.js';
 import { CONTENT_TYPES } from '../services/openrouter.js';
 import { sendLongMessage } from '../utils/telegram.js';
-import { ADMIN_IDS } from '../config.js';
+import { ADMIN_IDS, config } from '../config.js';
 
 function isAdmin(ctx) {
   return ADMIN_IDS.includes(ctx.from?.id);
@@ -25,11 +25,20 @@ function getUserLabel(row) {
   return name || `ID: ${row.user_id}`;
 }
 
+function createProgressBar(percent, length = 20) {
+  const filled = Math.round((percent / 100) * length);
+  const empty = length - filled;
+  return '█'.repeat(filled) + '░'.repeat(empty);
+}
+
 export async function handleAnalytics(ctx) {
   if (!isAdmin(ctx)) return;
 
   try {
-    const stats = await getAnalytics();
+    const [stats, usageStats] = await Promise.all([
+      getAnalytics(),
+      getMonthlyUsageStats(ADMIN_IDS, config.monthlyLimit),
+    ]);
 
     const total = stats.totalGenerations || 1;
     const byTypeLines = stats.byType.map((row) => {
@@ -40,12 +49,20 @@ export async function handleAnalytics(ctx) {
       return `  ${emoji} ${name}: ${row.count} (${pct}%)`;
     }).join('\n');
 
+    const progressBar = createProgressBar(usageStats.usagePercent);
+
     const text =
       `📊 Аналитика бота\n\n` +
       `👥 Всего пользователей: ${stats.totalUsers}\n` +
       `📝 Всего генераций: ${stats.totalGenerations}\n` +
       `📅 За этот месяц: ${stats.monthlyGenerations}\n\n` +
-      `📋 По типам контента:\n${byTypeLines || '  —'}`;
+      `📋 По типам контента:\n${byTypeLines || '  —'}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `📈 Использование лимитов (без админов):\n` +
+      `[${progressBar}] ${usageStats.usagePercent}%\n\n` +
+      `Использовано: ${usageStats.usedRequests} / ${usageStats.maxRequests}\n` +
+      `Осталось: ${usageStats.remainingRequests}\n` +
+      `Обычных пользователей: ${usageStats.regularUsersCount}`;
 
     const keyboard = new InlineKeyboard()
       .text('📋 Последние 20 запросов', 'admin:requests:0');
