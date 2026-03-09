@@ -188,6 +188,62 @@ export async function getMonthlyUsageStats(adminIds, monthlyLimit) {
   }
 }
 
+// Получение детальной статистики конкретного пользователя
+export async function getUserStats(userId, monthlyLimit) {
+  const client = await pool.connect();
+  try {
+    // Информация о пользователе
+    const userResult = await client.query(
+      'SELECT * FROM users WHERE user_id = $1',
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return null; // Пользователь не найден
+    }
+
+    const user = userResult.rows[0];
+
+    // Всего генераций за все время
+    const totalResult = await client.query(
+      'SELECT COUNT(*) as count FROM generations WHERE user_id = $1',
+      [userId]
+    );
+
+    // Генераций за текущий месяц
+    const monthlyResult = await client.query(
+      `SELECT COUNT(*) as count FROM generations
+       WHERE user_id = $1
+       AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)`,
+      [userId]
+    );
+
+    // Последние 10 запросов
+    const recentResult = await client.query(
+      `SELECT content_type, user_text, created_at
+       FROM generations
+       WHERE user_id = $1
+       ORDER BY created_at DESC
+       LIMIT 10`,
+      [userId]
+    );
+
+    const totalGenerations = parseInt(totalResult.rows[0].count);
+    const monthlyGenerations = parseInt(monthlyResult.rows[0].count);
+    const remaining = Math.max(0, monthlyLimit - monthlyGenerations);
+
+    return {
+      user,
+      totalGenerations,
+      monthlyGenerations,
+      remaining,
+      recentRequests: recentResult.rows,
+    };
+  } finally {
+    client.release();
+  }
+}
+
 // Последние запросы пользователей (с текстом), с поддержкой пагинации
 export async function getRecentRequests(limit = 20, offset = 0) {
   const client = await pool.connect();
