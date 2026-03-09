@@ -1,6 +1,6 @@
 import { Keyboard } from 'grammy';
 import { getOrCreateUser, getRemainingGenerations } from '../database/db-postgres.js';
-import { config } from '../config.js';
+import { TIER_LIMITS, ADMIN_IDS } from '../config.js';
 
 export async function handleStart(ctx) {
   const userId = ctx.from.id;
@@ -12,11 +12,20 @@ export async function handleStart(ctx) {
     last_name: ctx.from.last_name,
   });
 
-  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
+  // Получаем tier и лимит из middleware
+  const tier = ctx.state?.tier || 'free';
+  const limit = TIER_LIMITS[tier];
+  const remaining = tier === 'admin' ? '∞' : await getRemainingGenerations(userId, limit);
+
+  const tierMessage = {
+    free: '🆓 Free (2 генерации/месяц)',
+    premium: '🎓 Premium (10 генераций/месяц)',
+    admin: '⭐️ Admin (безлимит)'
+  }[tier];
 
   const keyboard = new Keyboard()
     .text('📋 Сценарий')
-    .text('💡 Методическая подсказка')
+    .text('🎵 Песня и ноты')
     .row()
     .text('🎨 Занятие')
     .text('🎮 Игра')
@@ -29,10 +38,11 @@ export async function handleStart(ctx) {
     `👋 Привет, ${ctx.from.first_name}!\n\n` +
     `Я помощник воспитателя. Помогу создать:\n` +
     `📋 Сценарии мероприятий и праздников\n` +
-    `💡 Методические рекомендации\n` +
+    `🎵 Песни с нотами\n` +
     `🎨 Развивающие занятия\n` +
     `🎮 Детские игры\n\n` +
-    `📊 У вас осталось ${remaining} из ${config.monthlyLimit} генераций в этом месяце.\n\n` +
+    `Ваш статус: ${tierMessage}\n` +
+    `📊 Осталось генераций: ${remaining}\n\n` +
     `💡 Как получить лучший результат?\n` +
     `Прочитайте статью с подсказками:\n` +
     `https://telegra.ph/Kak-poluchit-ot-Mishki-Maksa-imenno-to-chto-nuzhno-02-16\n\n` +

@@ -1,20 +1,47 @@
 import { getRemainingGenerations, getMonthlyGenerationsCount } from '../database/db-postgres.js';
-import { config } from '../config.js';
+import { TIER_LIMITS, ADMIN_IDS } from '../config.js';
+
+const TIER_NAMES = {
+  free: '🆓 Free (открытый канал)',
+  premium: '🎓 Premium (канал педагогов)',
+  admin: '⭐️ Admin (безлимит)'
+};
 
 export async function handleLimits(ctx) {
   const userId = ctx.from.id;
-  const used = await getMonthlyGenerationsCount(userId);
-  const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
 
-  const progressBar = createProgressBar(used, config.monthlyLimit);
+  // Получаем tier из middleware
+  const tier = ctx.state?.tier || 'free';
+  const limit = TIER_LIMITS[tier];
+
+  if (tier === 'admin') {
+    await ctx.reply(
+      `📊 Статистика использования\n\n` +
+      `Статус: ${TIER_NAMES[tier]}\n\n` +
+      `✅ У вас безлимитный доступ!\n` +
+      `📅 Генераций за месяц: ${await getMonthlyGenerationsCount(userId)}`
+    );
+    return;
+  }
+
+  const used = await getMonthlyGenerationsCount(userId);
+  const remaining = await getRemainingGenerations(userId, limit);
+
+  const progressBar = createProgressBar(used, limit);
+
+  const upgradeHint = tier === 'free'
+    ? '\n\n💡 Подпишитесь на закрытый канал педагогов для 10 генераций/месяц!'
+    : '';
 
   await ctx.reply(
     `📊 Статистика использования\n\n` +
+    `Статус: ${TIER_NAMES[tier]}\n\n` +
     `${progressBar}\n\n` +
     `✅ Использовано: ${used}\n` +
     `⏳ Осталось: ${remaining}\n` +
-    `📅 Лимит в месяц: ${config.monthlyLimit}\n\n` +
-    `💡 Лимит обновляется каждый месяц.`
+    `📅 Лимит в месяц: ${limit}` +
+    upgradeHint +
+    `\n\n💡 Лимит обновляется каждый месяц.`
   );
 }
 

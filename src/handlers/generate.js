@@ -66,15 +66,23 @@ export async function handleContentTypeSelection(ctx, contentType) {
     last_name: ctx.from.last_name,
   });
 
+  // Получаем tier и лимит из middleware (установлен в checkSubscription)
+  const tier = ctx.state?.tier || 'free';
+  const limit = ctx.state?.limit || 2;
+
   // Проверяем лимит (администраторы имеют безлимитный доступ)
-  const isAdmin = ADMIN_IDS.includes(userId);
-  if (!isAdmin) {
-    const remaining = await getRemainingGenerations(userId, config.monthlyLimit);
+  if (tier !== 'admin') {
+    const remaining = await getRemainingGenerations(userId, limit);
     if (remaining <= 0) {
+      const upgradeMessage = tier === 'free'
+        ? '\n\n💡 Хотите больше генераций? Подпишитесь на закрытый канал педагогов для 10 генераций/месяц!'
+        : '';
+
       await ctx.reply(
         '❌ Вы исчерпали лимит генераций на этот месяц.\n\n' +
         'Лимит обновится в начале следующего месяца.\n' +
-        'Нажмите "📊 Мои лимиты" для просмотра статистики.',
+        'Нажмите "📊 Мои лимиты" для просмотра статистики.' +
+        upgradeMessage,
         { reply_markup: createMainMenuKeyboard() }
       );
       return;
@@ -218,10 +226,13 @@ export async function handleDescription(ctx) {
 
     const result = await generateContent(contentType, description, context);
 
+    // Получаем tier и лимит из middleware
+    const tier = ctx.state?.tier || 'free';
+    const limit = ctx.state?.limit || 2;
+
     // Отправляем результат ПЕРЕД сохранением в БД
     const typeInfo = CONTENT_TYPES[contentType];
-    const isAdmin = ADMIN_IDS.includes(userId);
-    const remaining = isAdmin ? '∞' : await getRemainingGenerations(userId, config.monthlyLimit);
+    const remaining = tier === 'admin' ? '∞' : await getRemainingGenerations(userId, limit);
 
     // Используем sendLongMessage для автоматической разбивки длинных ответов
     await sendLongMessage(
@@ -230,14 +241,14 @@ export async function handleDescription(ctx) {
       `---\n📊 Осталось генераций: ${remaining}`
     );
 
-    // ТОЛЬКО если отправка успешна — сохраняем генерацию
-    await addGeneration(userId, contentType, description);
+    // ТОЛЬКО если отправка успешна — сохраняем генерацию с tier
+    await addGeneration(userId, contentType, description, tier);
 
     // Очищаем состояние
     await clearUserState(userId);
 
     // Предлагаем создать еще
-    if (isAdmin || remaining > 0) {
+    if (tier === 'admin' || remaining > 0) {
       await ctx.reply(
         'Хотите создать что-то еще? Выберите тип контента из меню.',
         { reply_markup: createMainMenuKeyboard() }

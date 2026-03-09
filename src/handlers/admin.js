@@ -1,8 +1,8 @@
 import { InlineKeyboard } from 'grammy';
-import { getAnalytics, getRecentRequests, getMonthlyUsageStats, getUserStats } from '../database/db-postgres.js';
+import { getAnalytics, getRecentRequests, getMonthlyUsageStats, getUserStats, getTierStats } from '../database/db-postgres.js';
 import { CONTENT_TYPES } from '../services/openrouter.js';
 import { sendLongMessage } from '../utils/telegram.js';
-import { ADMIN_IDS, config } from '../config.js';
+import { ADMIN_IDS, TIER_LIMITS } from '../config.js';
 
 function isAdmin(ctx) {
   return ADMIN_IDS.includes(ctx.from?.id);
@@ -35,9 +35,10 @@ export async function handleAnalytics(ctx) {
   if (!isAdmin(ctx)) return;
 
   try {
-    const [stats, usageStats] = await Promise.all([
+    const [stats, usageStats, tierStats] = await Promise.all([
       getAnalytics(),
-      getMonthlyUsageStats(ADMIN_IDS, config.monthlyLimit),
+      getMonthlyUsageStats(ADMIN_IDS, 10), // Legacy для совместимости
+      getTierStats(ADMIN_IDS),
     ]);
 
     const total = stats.totalGenerations || 1;
@@ -49,20 +50,44 @@ export async function handleAnalytics(ctx) {
       return `  ${emoji} ${name}: ${row.count} (${pct}%)`;
     }).join('\n');
 
+    // Статистика по tier
+    const tierEmoji = { free: '🆓', premium: '🎓', admin: '⭐️' };
+    const usersByTierLines = tierStats.usersByTier.map((row) => {
+      return `  ${tierEmoji[row.tier] || '•'} ${row.tier}: ${row.count}`;
+    }).join('\n');
+
+    const totalGensByTierLines = tierStats.totalGensByTier.map((row) => {
+      return `  ${tierEmoji[row.tier] || '•'} ${row.tier}: ${row.count}`;
+    }).join('\n');
+
+    const monthlyGensByTierLines = tierStats.monthlyGensByTier.map((row) => {
+      // Вычисляем использование лимита для этого tier
+      const tierLimit = TIER_LIMITS[row.tier] || 10;
+      const usersCount = tierStats.usersByTier.find(u => u.tier === row.tier)?.count || 1;
+      const maxForTier = row.tier === 'admin' ? '∞' : tierLimit * usersCount;
+      const used = parseInt(row.count);
+      const remaining = row.tier === 'admin' ? '∞' : Math.max(0, maxForTier - used);
+      return `  ${tierEmoji[row.tier] || '•'} ${row.tier}: ${used} / ${maxForTier} (осталось: ${remaining})`;
+    }).join('\n');
+
     const progressBar = createProgressBar(usageStats.usagePercent);
 
     const text =
       `📊 Аналитика бота\n\n` +
       `👥 Всего пользователей: ${stats.totalUsers}\n` +
+      `${usersByTierLines}\n\n` +
       `📝 Всего генераций: ${stats.totalGenerations}\n` +
-      `📅 За этот месяц: ${stats.monthlyGenerations}\n\n` +
+      `${totalGensByTierLines || '  —'}\n\n` +
+      `📅 За этот месяц: ${stats.monthlyGenerations}\n` +
+      `${monthlyGensByTierLines || '  —'}\n\n` +
       `📋 По типам контента:\n${byTypeLines || '  —'}\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
-      `📈 Использование лимитов (без админов):\n` +
-      `[${progressBar}] ${usageStats.usagePercent}%\n\n` +
-      `Использовано: ${usageStats.usedRequests} / ${usageStats.maxRequests}\n` +
-      `Осталось: ${usageStats.remainingRequests}\n` +
-      `Обычных пользователей: ${usageStats.regularUsersCount}`;
+      `📈 Конверсия free → premium:\n` +
+      `Конвертировано: ${tierStats.conversion.convertedUsers} (${tierStats.conversion.conversionPercent}%)\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `📊 Общее использование лимитов (legacy):\n` +
+      `[${progressBar}] ${usageStats.usagePercent}%\n` +
+      `Использовано: ${usageStats.usedRequests} / ${usageStats.maxRequests}`;
 
     const keyboard = new InlineKeyboard()
       .text('📋 Последние 20 запросов', 'admin:requests:0');
@@ -150,14 +175,21 @@ export async function handleUserStats(ctx) {
   }
 
   try {
-    const stats = await getUserStats(targetUserId, config.monthlyLimit);
+    // Определяем tier и лимит пользователя
+    const userTier = ADMIN_IDS.includes(targetUserId) ? 'admin' : 'free'; // Будет обновлен из БД
+    const userLimit = TIER_LIMITS[userTier];
+
+    const stats = await getUserStats(targetUserId, userLimit);
 
     if (!stats) {
       await ctx.reply(`❌ Пользователь с ID ${targetUserId} не найден в базе`);
       return;
     }
 
-    const isAdmin = ADMIN_IDS.includes(targetUserId);
+    const tier = stats.user.tier || 'free';
+    const tierEmoji = { free: '🆓', premium: '🎓', admin: '⭐️' };
+    const tierName = { free: 'Free (открытый канал)', premium: 'Premium (канал педагогов)', admin: 'Admin (безлимит)' };
+
     const userName = [stats.user.first_name, stats.user.last_name].filter(Boolean).join(' ');
     const username = stats.user.username ? `@${stats.user.username}` : '—';
 
@@ -175,11 +207,11 @@ export async function handleUserStats(ctx) {
       `ID: ${targetUserId}\n` +
       `Имя: ${userName || 'не указано'}\n` +
       `Username: ${username}\n` +
-      `Статус: ${isAdmin ? '⭐️ Администратор (безлимит)' : '👤 Обычный пользователь'}\n\n` +
+      `Tier: ${tierEmoji[tier]} ${tierName[tier]}\n\n` +
       `📊 Использование:\n` +
       `• Всего генераций: ${stats.totalGenerations}\n` +
       `• За текущий месяц: ${stats.monthlyGenerations}\n` +
-      `• Осталось: ${isAdmin ? '∞' : stats.remaining}\n\n` +
+      `• Осталось: ${tier === 'admin' ? '∞' : stats.remaining}\n\n` +
       `📋 Последние 5 запросов:\n${recentLines || '  (нет запросов)'}`;
 
     await ctx.reply(message);

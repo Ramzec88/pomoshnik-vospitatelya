@@ -25,6 +25,8 @@ export async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS tier TEXT DEFAULT 'free';
+
       CREATE TABLE IF NOT EXISTS generations (
         id SERIAL PRIMARY KEY,
         user_id BIGINT NOT NULL,
@@ -34,6 +36,7 @@ export async function initDatabase() {
       );
 
       ALTER TABLE generations ADD COLUMN IF NOT EXISTS user_text TEXT;
+      ALTER TABLE generations ADD COLUMN IF NOT EXISTS tier TEXT;
 
       CREATE TABLE IF NOT EXISTS user_states (
         user_id BIGINT PRIMARY KEY,
@@ -107,13 +110,26 @@ export async function getMonthlyGenerationsCount(userId) {
 }
 
 // Добавление записи о генерации
-export async function addGeneration(userId, contentType, userText = null) {
+export async function addGeneration(userId, contentType, userText = null, tier = 'free') {
   const client = await pool.connect();
   try {
     await client.query(
-      `INSERT INTO generations (user_id, content_type, user_text)
-       VALUES ($1, $2, $3)`,
-      [userId, contentType, userText]
+      `INSERT INTO generations (user_id, content_type, user_text, tier)
+       VALUES ($1, $2, $3, $4)`,
+      [userId, contentType, userText, tier]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+// Обновление tier пользователя
+export async function updateUserTier(userId, tier) {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      'UPDATE users SET tier = $1 WHERE user_id = $2',
+      [tier, userId]
     );
   } finally {
     client.release();
@@ -238,6 +254,67 @@ export async function getUserStats(userId, monthlyLimit) {
       monthlyGenerations,
       remaining,
       recentRequests: recentResult.rows,
+    };
+  } finally {
+    client.release();
+  }
+}
+
+// Статистика по tier (уровням доступа)
+export async function getTierStats(adminIds) {
+  const client = await pool.connect();
+  try {
+    // Подсчет пользователей по tier
+    const usersByTier = await client.query(
+      `SELECT tier, COUNT(*) as count FROM users
+       WHERE user_id NOT IN (${adminIds.map((_, i) => `$${i + 1}`).join(',')})
+       GROUP BY tier
+       ORDER BY count DESC`,
+      adminIds
+    );
+
+    // Всего генераций по tier (за все время)
+    const totalGensByTier = await client.query(
+      `SELECT tier, COUNT(*) as count FROM generations
+       WHERE tier IS NOT NULL
+       GROUP BY tier
+       ORDER BY count DESC`
+    );
+
+    // Генерации за текущий месяц по tier
+    const monthlyGensByTier = await client.query(
+      `SELECT tier, COUNT(*) as count FROM generations
+       WHERE tier IS NOT NULL
+       AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_TIMESTAMP)
+       GROUP BY tier
+       ORDER BY count DESC`
+    );
+
+    // Конверсия free → premium (пользователи которые были free, но стали premium)
+    const conversionQuery = await client.query(
+      `SELECT COUNT(DISTINCT user_id) as count FROM users
+       WHERE tier = 'premium'
+       AND user_id IN (
+         SELECT DISTINCT user_id FROM generations WHERE tier = 'free'
+       )
+       AND user_id NOT IN (${adminIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      adminIds
+    );
+
+    const totalFreeUsers = usersByTier.rows.find(r => r.tier === 'free')?.count || 0;
+    const convertedUsers = parseInt(conversionQuery.rows[0]?.count || 0);
+    const conversionPercent = totalFreeUsers > 0
+      ? Math.round((convertedUsers / (parseInt(totalFreeUsers) + convertedUsers)) * 100)
+      : 0;
+
+    return {
+      usersByTier: usersByTier.rows,
+      totalGensByTier: totalGensByTier.rows,
+      monthlyGensByTier: monthlyGensByTier.rows,
+      conversion: {
+        convertedUsers,
+        conversionPercent,
+      },
     };
   } finally {
     client.release();

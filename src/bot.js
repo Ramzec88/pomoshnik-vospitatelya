@@ -206,7 +206,7 @@ process.once('SIGTERM', shutdown);
 
 // Запуск бота
 console.log('🤖 Запуск бота "Помощник воспитателя"...');
-console.log(`📊 Лимит генераций: ${config.monthlyLimit} в месяц`);
+console.log(`📊 Tier система: free(2), premium(10), admin(∞)`);
 console.log(`🤖 Модель: ${config.openRouterModel}`);
 
 if (USE_WEBHOOK) {
