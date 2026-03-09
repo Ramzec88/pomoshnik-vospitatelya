@@ -218,13 +218,7 @@ export async function handleDescription(ctx) {
 
     const result = await generateContent(contentType, description, context);
 
-    // Сохраняем генерацию (с текстом запроса пользователя)
-    await addGeneration(userId, contentType, description);
-
-    // Очищаем состояние
-    await clearUserState(userId);
-
-    // Отправляем результат
+    // Отправляем результат ПЕРЕД сохранением в БД
     const typeInfo = CONTENT_TYPES[contentType];
     const isAdmin = ADMIN_IDS.includes(userId);
     const remaining = isAdmin ? '∞' : await getRemainingGenerations(userId, config.monthlyLimit);
@@ -235,6 +229,12 @@ export async function handleDescription(ctx) {
       `${typeInfo.emoji} ${typeInfo.name}\n\n${result}\n\n` +
       `---\n📊 Осталось генераций: ${remaining}`
     );
+
+    // ТОЛЬКО если отправка успешна — сохраняем генерацию
+    await addGeneration(userId, contentType, description);
+
+    // Очищаем состояние
+    await clearUserState(userId);
 
     // Предлагаем создать еще
     if (isAdmin || remaining > 0) {
@@ -249,8 +249,7 @@ export async function handleDescription(ctx) {
 
     await ctx.reply(
       '❌ Произошла ошибка при генерации контента.\n' +
-      'Попробуйте еще раз позже или обратитесь к администратору.\n\n' +
-      'Генерация не была учтена в вашем лимите.',
+      'Попробуйте еще раз позже или обратитесь к администратору.',
       { reply_markup: createMainMenuKeyboard() }
     );
   }
