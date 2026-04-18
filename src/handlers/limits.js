@@ -3,7 +3,7 @@ import { TIER_LIMITS, ADMIN_IDS } from '../config.js';
 
 const TIER_NAMES = {
   free: '🆓 Free (открытый канал)',
-  premium: '🎓 Premium (канал педагогов)',
+  premium: '🎓 Premium (Воспитатель | Детский сад | Мишка Макс)',
   admin: '⭐️ Admin (безлимит)'
 };
 
@@ -30,7 +30,7 @@ export async function handleLimits(ctx) {
   const progressBar = createProgressBar(used, limit);
 
   const upgradeHint = tier === 'free'
-    ? '\n\n💡 Подпишитесь на закрытый канал педагогов для 10 генераций/месяц!'
+    ? '\n\n💡 Подпишитесь на канал Воспитатель | Детский сад | Мишка Макс для 10 генераций/месяц!'
     : '';
 
   await ctx.reply(

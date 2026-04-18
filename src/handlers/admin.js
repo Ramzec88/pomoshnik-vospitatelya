@@ -188,7 +188,7 @@ export async function handleUserStats(ctx) {
 
     const tier = stats.user.tier || 'free';
     const tierEmoji = { free: '🆓', premium: '🎓', admin: '⭐️' };
-    const tierName = { free: 'Free (открытый канал)', premium: 'Premium (канал педагогов)', admin: 'Admin (безлимит)' };
+    const tierName = { free: 'Free (открытый канал)', premium: 'Premium (Воспитатель | Детский сад | Мишка Макс)', admin: 'Admin (безлимит)' };
 
     const userName = [stats.user.first_name, stats.user.last_name].filter(Boolean).join(' ');
     const username = stats.user.username ? `@${stats.user.username}` : '—';

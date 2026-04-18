@@ -33,6 +33,16 @@ const SYSTEM_PROMPTS = {
 Указывай возраст, количество участников, правила, инвентарь и педагогические цели игры.`,
 };
 
+function stripMarkdown(text) {
+  return text
+    .replace(/^#{1,6}\s*/gm, '')
+    .replace(/\*\*(.+?)\*\*/gs, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/^[*-]\s+/gm, '• ')
+    .replace(/_{3,}/g, '———')
+    .trim();
+}
+
 export async function generateContent(contentType, userPrompt, userContext = {}) {
   const systemPrompt = SYSTEM_PROMPTS[contentType] || SYSTEM_PROMPTS.scenario;
 
@@ -83,7 +93,7 @@ export async function generateContent(contentType, userPrompt, userContext = {})
       }
     );
 
-    return response.data.choices[0].message.content;
+    return stripMarkdown(response.data.choices[0].message.content);
   } catch (error) {
     console.error('Ошибка OpenRouter API:', error.response?.data || error.message);
     throw new Error('Не удалось сгенерировать контент. Попробуйте позже.');

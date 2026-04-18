@@ -75,7 +75,7 @@ export async function handleContentTypeSelection(ctx, contentType) {
     const remaining = await getRemainingGenerations(userId, limit);
     if (remaining <= 0) {
       const upgradeMessage = tier === 'free'
-        ? '\n\n💡 Хотите больше генераций? Подпишитесь на закрытый канал педагогов для 10 генераций/месяц!'
+        ? '\n\n💡 Хотите больше генераций? Подпишитесь на канал Воспитатель | Детский сад | Мишка Макс для 10 генераций/месяц!'
         : '';
 
       await ctx.reply(
