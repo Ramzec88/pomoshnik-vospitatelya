@@ -234,15 +234,17 @@ export async function handleDescription(ctx) {
     const typeInfo = CONTENT_TYPES[contentType];
     const remaining = tier === 'admin' ? '∞' : await getRemainingGenerations(userId, limit);
 
+    const fullMessage = `${typeInfo.emoji} ${typeInfo.name}\n\n${result}\n\n` +
+      `---\n📊 Осталось генераций: ${remaining}`;
+
+    console.log(`[Generate] Пользователь ${userId} (@${ctx.from.username || 'no_username'}), тип: ${contentType}, длина: ${fullMessage.length} символов`);
+
     // Используем sendLongMessage для автоматической разбивки длинных ответов
-    await sendLongMessage(
-      ctx,
-      `${typeInfo.emoji} ${typeInfo.name}\n\n${result}\n\n` +
-      `---\n📊 Осталось генераций: ${remaining}`
-    );
+    await sendLongMessage(ctx, fullMessage);
 
     // ТОЛЬКО если отправка успешна — сохраняем генерацию с tier
     await addGeneration(userId, contentType, description, tier);
+    console.log(`[Generate] ✅ Генерация сохранена для пользователя ${userId}`);
 
     // Очищаем состояние
     await clearUserState(userId);

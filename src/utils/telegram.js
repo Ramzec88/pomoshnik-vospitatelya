@@ -87,8 +87,11 @@ export async function sendLongMessage(ctx, text, options = {}) {
 
   if (parts.length === 1) {
     // Если текст поместился в одно сообщение
+    console.log(`[sendLongMessage] Отправка одного сообщения (${text.length} символов)`);
     return await ctx.reply(text, options);
   }
+
+  console.log(`[sendLongMessage] Разбито на ${parts.length} частей`);
 
   // Отправляем несколько сообщений
   for (let i = 0; i < parts.length; i++) {
@@ -101,11 +104,19 @@ export async function sendLongMessage(ctx, text, options = {}) {
     // reply_markup добавляем только к последнему сообщению
     const partOptions = isLast ? options : {};
 
-    await ctx.reply(partText, partOptions);
+    try {
+      await ctx.reply(partText, partOptions);
+      console.log(`[sendLongMessage] ✅ Часть ${i + 1}/${parts.length} отправлена (${partText.length} символов)`);
+    } catch (error) {
+      console.error(`[sendLongMessage] ❌ Ошибка отправки части ${i + 1}/${parts.length}:`, error);
+      throw new Error(`Не удалось отправить часть ${i + 1} из ${parts.length}: ${error.message}`);
+    }
 
     // Небольшая задержка между сообщениями, чтобы не словить rate limit
     if (!isLast) {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
   }
+
+  console.log(`[sendLongMessage] ✅ Все ${parts.length} части отправлены успешно`);
 }
