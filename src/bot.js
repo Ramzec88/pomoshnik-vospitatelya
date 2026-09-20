@@ -13,7 +13,7 @@ import {
   handleDescription,
   handleCancel,
 } from './handlers/generate.js';
-import { handleAnalytics, handleAdminCallback, handleUserStats } from './handlers/admin.js';
+import { handleAnalytics, handleAdminCallback, handleUserStats, handleBroadcast } from './handlers/admin.js';
 import { CONTENT_TYPES } from './services/openrouter.js';
 
 // Валидация конфигурации
@@ -47,6 +47,7 @@ bot.command('help', checkSubscription, handleHelp);
 bot.command('cancel', checkSubscription, handleCancel);
 bot.command('analytics', handleAnalytics);
 bot.command('user', handleUserStats);
+bot.command('broadcast', handleBroadcast);
 
 // Обработка кнопок меню
 bot.hears('📊 Мои лимиты', checkSubscription, handleLimits);

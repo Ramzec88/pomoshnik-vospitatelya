@@ -1,5 +1,5 @@
 import { InlineKeyboard } from 'grammy';
-import { getAnalytics, getRecentRequests, getMonthlyUsageStats, getUserStats, getTierStats } from '../database/db-postgres.js';
+import { getAnalytics, getRecentRequests, getMonthlyUsageStats, getUserStats, getTierStats, getAllUsers } from '../database/db-postgres.js';
 import { CONTENT_TYPES } from '../services/openrouter.js';
 import { sendLongMessage } from '../utils/telegram.js';
 import { ADMIN_IDS, TIER_LIMITS } from '../config.js';
@@ -219,4 +219,50 @@ export async function handleUserStats(ctx) {
     console.error('Ошибка получения статистики пользователя:', error);
     await ctx.reply('❌ Ошибка получения данных');
   }
+}
+
+export async function handleBroadcast(ctx) {
+  if (!isAdmin(ctx)) return;
+
+  const text = ctx.message?.text || '';
+  const message = text.replace(/^\/broadcast\s*/i, '').trim();
+
+  if (!message) {
+    await ctx.reply(
+      '📢 Рассылка сообщений\n\n' +
+      'Использование:\n' +
+      '/broadcast Ваше сообщение\n\n' +
+      'Пример:\n' +
+      '/broadcast Уважаемые пользователи! Добавили новые функции.'
+    );
+    return;
+  }
+
+  const users = await getAllUsers();
+  const total = users.length;
+
+  await ctx.reply(`📢 Начинаю рассылку для ${total} пользователей...`);
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const userId of users) {
+    try {
+      await ctx.api.sendMessage(userId, `📢 Сообщение от администратора:\n\n${message}`);
+      sent++;
+    } catch (error) {
+      failed++;
+      console.log(`[Broadcast] Не удалось отправить пользователю ${userId}: ${error.message}`);
+    }
+
+    // Задержка чтобы не превысить rate limit Telegram (30 сообщений/сек)
+    await new Promise(resolve => setTimeout(resolve, 40));
+  }
+
+  await ctx.reply(
+    `✅ Рассылка завершена\n\n` +
+    `👥 Всего пользователей: ${total}\n` +
+    `✅ Отправлено: ${sent}\n` +
+    `❌ Не доставлено (заблокировали бота): ${failed}`
+  );
 }

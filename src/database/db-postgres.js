@@ -340,6 +340,17 @@ export async function getRecentRequests(limit = 20, offset = 0) {
   }
 }
 
+// Получение всех пользователей для рассылки
+export async function getAllUsers() {
+  const client = await pool.connect();
+  try {
+    const result = await client.query('SELECT user_id FROM users ORDER BY created_at ASC');
+    return result.rows.map(r => r.user_id);
+  } finally {
+    client.release();
+  }
+}
+
 // Получение оставшихся генераций
 export async function getRemainingGenerations(userId, monthlyLimit) {
   const used = await getMonthlyGenerationsCount(userId);
