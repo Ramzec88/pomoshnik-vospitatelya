@@ -107,6 +107,11 @@ export async function handleAdminCallback(ctx) {
 
   const data = ctx.callbackQuery.data;
 
+  if (data === 'admin:bc:send' || data === 'admin:bc:cancel') {
+    await handleBroadcastDecision(ctx, data === 'admin:bc:send');
+    return;
+  }
+
   if (data.startsWith('admin:requests:')) {
     const offset = parseInt(data.split(':')[2]) || 0;
     const limit = 20;
@@ -240,6 +245,18 @@ function parseBroadcast(raw) {
   return { message: parts[0], buttonText: parts[1], buttonUrl: url.href };
 }
 
+// Черновики рассылки, ожидающие подтверждения: adminId -> { message, buttonText, buttonUrl }
+const pendingBroadcasts = new Map();
+
+function buildBroadcastMessage({ message, buttonText, buttonUrl }) {
+  return {
+    text: `📢 Сообщение от администратора:\n\n${message}`,
+    options: buttonUrl
+      ? { reply_markup: new InlineKeyboard().url(buttonText, buttonUrl) }
+      : {},
+  };
+}
+
 export async function handleBroadcast(ctx) {
   if (!isAdmin(ctx)) return;
 
@@ -254,20 +271,64 @@ export async function handleBroadcast(ctx) {
       'С кнопкой-ссылкой:\n' +
       '/broadcast Текст | Текст кнопки | https://ссылка\n\n' +
       'Пример:\n' +
-      '/broadcast Добавили новые функции! | Подробнее | https://t.me/channel/1'
+      '/broadcast Добавили новые функции! | Подробнее | https://t.me/channel/1\n\n' +
+      'Перед отправкой бот покажет предпросмотр и попросит подтверждение.'
     );
     return;
   }
 
-  const { message, buttonText, buttonUrl, error } = parseBroadcast(raw);
+  const { error, ...draft } = parseBroadcast(raw);
   if (error) {
     await ctx.reply(error);
     return;
   }
 
-  const options = buttonUrl
-    ? { reply_markup: new InlineKeyboard().url(buttonText, buttonUrl) }
-    : {};
+  try {
+    const total = (await getAllUsers()).length;
+    const { text: previewText, options } = buildBroadcastMessage(draft);
+
+    await ctx.reply('👁 Предпросмотр — так сообщение увидят пользователи:');
+    await ctx.reply(previewText, options);
+
+    pendingBroadcasts.set(ctx.from.id, draft);
+
+    await ctx.reply(
+      `Отправить это сообщение ${total} пользователям?`,
+      {
+        reply_markup: new InlineKeyboard()
+          .text('✅ Отправить', 'admin:bc:send')
+          .text('❌ Отменить', 'admin:bc:cancel'),
+      }
+    );
+  } catch (err) {
+    console.error('Ошибка подготовки рассылки:', err);
+    await ctx.reply('❌ Не удалось подготовить рассылку. Проверьте текст и попробуйте снова.');
+  }
+}
+
+async function handleBroadcastDecision(ctx, confirmed) {
+  // Забираем черновик сразу, чтобы повторное нажатие не запустило рассылку дважды
+  const draft = pendingBroadcasts.get(ctx.from.id);
+  pendingBroadcasts.delete(ctx.from.id);
+
+  await ctx.answerCallbackQuery().catch(() => {});
+  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+
+  if (!draft) {
+    await ctx.reply('⚠️ Черновик рассылки не найден или уже обработан. Отправьте /broadcast заново.');
+    return;
+  }
+
+  if (!confirmed) {
+    await ctx.reply('❌ Рассылка отменена.');
+    return;
+  }
+
+  await runBroadcast(ctx, draft);
+}
+
+async function runBroadcast(ctx, draft) {
+  const { text, options } = buildBroadcastMessage(draft);
 
   const users = await getAllUsers();
   const total = users.length;
@@ -279,7 +340,7 @@ export async function handleBroadcast(ctx) {
 
   for (const userId of users) {
     try {
-      await ctx.api.sendMessage(userId, `📢 Сообщение от администратора:\n\n${message}`, options);
+      await ctx.api.sendMessage(userId, text, options);
       sent++;
     } catch (error) {
       failed++;
