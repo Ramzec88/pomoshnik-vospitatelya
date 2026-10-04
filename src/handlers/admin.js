@@ -221,22 +221,53 @@ export async function handleUserStats(ctx) {
   }
 }
 
+// Разбор: "Текст | Текст кнопки | https://ссылка" (кнопка необязательна)
+function parseBroadcast(raw) {
+  const parts = raw.split('|').map((p) => p.trim());
+  if (parts.length === 1) return { message: raw };
+  if (parts.length !== 3 || !parts[0] || !parts[1]) {
+    return { error: 'Формат: /broadcast Текст | Текст кнопки | https://ссылка' };
+  }
+  let url;
+  try {
+    url = new URL(parts[2]);
+  } catch {
+    return { error: '❌ Некорректная ссылка для кнопки' };
+  }
+  if (!['http:', 'https:', 'tg:'].includes(url.protocol)) {
+    return { error: '❌ Ссылка должна начинаться с http://, https:// или tg://' };
+  }
+  return { message: parts[0], buttonText: parts[1], buttonUrl: url.href };
+}
+
 export async function handleBroadcast(ctx) {
   if (!isAdmin(ctx)) return;
 
   const text = ctx.message?.text || '';
-  const message = text.replace(/^\/broadcast\s*/i, '').trim();
+  const raw = text.replace(/^\/broadcast\s*/i, '').trim();
 
-  if (!message) {
+  if (!raw) {
     await ctx.reply(
       '📢 Рассылка сообщений\n\n' +
       'Использование:\n' +
       '/broadcast Ваше сообщение\n\n' +
+      'С кнопкой-ссылкой:\n' +
+      '/broadcast Текст | Текст кнопки | https://ссылка\n\n' +
       'Пример:\n' +
-      '/broadcast Уважаемые пользователи! Добавили новые функции.'
+      '/broadcast Добавили новые функции! | Подробнее | https://t.me/channel/1'
     );
     return;
   }
+
+  const { message, buttonText, buttonUrl, error } = parseBroadcast(raw);
+  if (error) {
+    await ctx.reply(error);
+    return;
+  }
+
+  const options = buttonUrl
+    ? { reply_markup: new InlineKeyboard().url(buttonText, buttonUrl) }
+    : {};
 
   const users = await getAllUsers();
   const total = users.length;
@@ -248,7 +279,7 @@ export async function handleBroadcast(ctx) {
 
   for (const userId of users) {
     try {
-      await ctx.api.sendMessage(userId, `📢 Сообщение от администратора:\n\n${message}`);
+      await ctx.api.sendMessage(userId, `📢 Сообщение от администратора:\n\n${message}`, options);
       sent++;
     } catch (error) {
       failed++;
