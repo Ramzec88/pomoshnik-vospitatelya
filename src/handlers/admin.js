@@ -245,16 +245,13 @@ function parseBroadcast(raw) {
   return { message: parts[0], buttonText: parts[1], buttonUrl: url.href };
 }
 
-// Черновики рассылки, ожидающие подтверждения: adminId -> { message, buttonText, buttonUrl }
-const pendingBroadcasts = new Map();
+// Черновик рассылки хранится в самом сообщении-предпросмотре (текст + кнопка-ссылка),
+// поэтому подтверждение работает после перезапуска бота и на нескольких инстансах.
+const BROADCAST_PREFIX = '📢 Сообщение от администратора:\n\n';
+const processingPreviews = new Set(); // защита от двойного нажатия «Отправить»
 
-function buildBroadcastMessage({ message, buttonText, buttonUrl }) {
-  return {
-    text: `📢 Сообщение от администратора:\n\n${message}`,
-    options: buttonUrl
-      ? { reply_markup: new InlineKeyboard().url(buttonText, buttonUrl) }
-      : {},
-  };
+function buildLinkKeyboard(buttonText, buttonUrl) {
+  return buttonUrl ? new InlineKeyboard().url(buttonText, buttonUrl) : undefined;
 }
 
 export async function handleBroadcast(ctx) {
@@ -277,7 +274,7 @@ export async function handleBroadcast(ctx) {
     return;
   }
 
-  const { error, ...draft } = parseBroadcast(raw);
+  const { error, message, buttonText, buttonUrl } = parseBroadcast(raw);
   if (error) {
     await ctx.reply(error);
     return;
@@ -285,21 +282,16 @@ export async function handleBroadcast(ctx) {
 
   try {
     const total = (await getAllUsers()).length;
-    const { text: previewText, options } = buildBroadcastMessage(draft);
 
-    await ctx.reply('👁 Предпросмотр — так сообщение увидят пользователи:');
-    await ctx.reply(previewText, options);
-
-    pendingBroadcasts.set(ctx.from.id, draft);
+    const keyboard = buttonUrl ? new InlineKeyboard().url(buttonText, buttonUrl).row() : new InlineKeyboard();
+    keyboard
+      .text(`✅ Отправить (${total})`, 'admin:bc:send')
+      .text('❌ Отменить', 'admin:bc:cancel');
 
     await ctx.reply(
-      `Отправить это сообщение ${total} пользователям?`,
-      {
-        reply_markup: new InlineKeyboard()
-          .text('✅ Отправить', 'admin:bc:send')
-          .text('❌ Отменить', 'admin:bc:cancel'),
-      }
+      '👁 Предпросмотр — так сообщение увидят пользователи. Отправить?'
     );
+    await ctx.reply(BROADCAST_PREFIX + message, { reply_markup: keyboard });
   } catch (err) {
     console.error('Ошибка подготовки рассылки:', err);
     await ctx.reply('❌ Не удалось подготовить рассылку. Проверьте текст и попробуйте снова.');
@@ -307,28 +299,44 @@ export async function handleBroadcast(ctx) {
 }
 
 async function handleBroadcastDecision(ctx, confirmed) {
-  // Забираем черновик сразу, чтобы повторное нажатие не запустило рассылку дважды
-  const draft = pendingBroadcasts.get(ctx.from.id);
-  pendingBroadcasts.delete(ctx.from.id);
+  const msg = ctx.callbackQuery.message;
+  const key = `${msg?.chat?.id}:${msg?.message_id}`;
 
-  await ctx.answerCallbackQuery().catch(() => {});
-  await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
-
-  if (!draft) {
-    await ctx.reply('⚠️ Черновик рассылки не найден или уже обработан. Отправьте /broadcast заново.');
+  if (!msg?.text?.startsWith(BROADCAST_PREFIX)) {
+    await ctx.answerCallbackQuery('Сообщение для рассылки не найдено').catch(() => {});
     return;
   }
-
-  if (!confirmed) {
-    await ctx.reply('❌ Рассылка отменена.');
+  if (processingPreviews.has(key)) {
+    await ctx.answerCallbackQuery('Уже обрабатывается').catch(() => {});
     return;
   }
+  processingPreviews.add(key);
 
-  await runBroadcast(ctx, draft);
+  try {
+    await ctx.answerCallbackQuery().catch(() => {});
+
+    // Достаём кнопку-ссылку из самого предпросмотра
+    const urlButton = (msg.reply_markup?.inline_keyboard || [])
+      .flat()
+      .find((b) => b.url);
+    const linkKeyboard = urlButton ? buildLinkKeyboard(urlButton.text, urlButton.url) : undefined;
+
+    // Убираем кнопки подтверждения (кнопку-ссылку оставляем)
+    await ctx.editMessageReplyMarkup({ reply_markup: linkKeyboard }).catch(() => {});
+
+    if (!confirmed) {
+      await ctx.reply('❌ Рассылка отменена.');
+      return;
+    }
+
+    await runBroadcast(ctx, msg.text, linkKeyboard);
+  } finally {
+    processingPreviews.delete(key);
+  }
 }
 
-async function runBroadcast(ctx, draft) {
-  const { text, options } = buildBroadcastMessage(draft);
+async function runBroadcast(ctx, text, linkKeyboard) {
+  const options = linkKeyboard ? { reply_markup: linkKeyboard } : {};
 
   const users = await getAllUsers();
   const total = users.length;
